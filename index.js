@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jiraRoutes = require('./routes/jira');
+const prioritiesRoutes = require('./routes/priorities');
 const app = express();
 
 // CORS configuration
@@ -48,13 +49,15 @@ app.get('/', (req, res) => {
     status: 'running',
     endpoints: {
       health: '/health',
-      jira: '/api/jira/*'
+      jira: '/api/jira/*',
+      priorities: '/api/priorities/*'
     }
   });
 });
 
 // Routes
 app.use('/api/jira', jiraRoutes);
+app.use('/api/priorities', prioritiesRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
