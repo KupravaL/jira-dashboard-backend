@@ -57,30 +57,60 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Search issues with JQL
+// Search issues with JQL (migrated to new /search/jql endpoint)
 router.post('/search', async (req, res, next) => {
   try {
-    const { jql, startAt = 0, maxResults = 50, fields } = req.body;
+    let { jql, startAt = 0, maxResults = 50, fields } = req.body;
+
+    // The new /search/jql API requires bounded queries
+    // If no restriction is present, add a default date restriction
+    const hasRestriction = jql && (
+      jql.toLowerCase().includes('project') ||
+      jql.toLowerCase().includes('created') ||
+      jql.toLowerCase().includes('updated') ||
+      jql.toLowerCase().includes('assignee') ||
+      jql.toLowerCase().includes('status') ||
+      jql.toLowerCase().includes('priority')
+    );
+
+    if (!hasRestriction) {
+      // Add a default restriction for the last 365 days
+      const restriction = 'created >= -365d';
+      jql = jql ? `${restriction} AND ${jql}` : restriction;
+    }
+
     console.log('Searching issues with JQL:', jql);
 
-    const response = await jiraApi.post('/rest/api/3/search', {
-      jql,
-      startAt: parseInt(startAt),
-      maxResults: parseInt(maxResults),
-      fields: fields || [
-        'summary',
-        'description',
-        'status',
-        'priority',
-        'assignee',
-        'created',
-        'updated',
-        'project'
-      ]
+    const requestedFields = fields || [
+      'summary',
+      'description',
+      'status',
+      'priority',
+      'assignee',
+      'created',
+      'updated',
+      'project'
+    ];
+
+    const response = await jiraApi.get('/rest/api/3/search/jql', {
+      params: {
+        jql,
+        startAt: parseInt(startAt),
+        maxResults: parseInt(maxResults),
+        fields: requestedFields.join(',')
+      }
     });
 
-    console.log(`Found ${response.data.total} issues`);
-    res.json(response.data);
+    // Normalize response to match expected format
+    const result = {
+      issues: response.data.issues || [],
+      startAt: parseInt(startAt),
+      maxResults: parseInt(maxResults),
+      total: response.data.total ?? response.data.issues?.length ?? 0
+    };
+
+    console.log(`Found ${result.total} issues`);
+    res.json(result);
   } catch (error) {
     console.error('Error searching issues:', error.message);
     if (error.response) {
@@ -112,24 +142,24 @@ router.get('/:projectKey/issues', async (req, res, next) => {
     if (createdBefore) jql += ` AND created <= "${createdBefore}"`;
     jql += ' ORDER BY created DESC';
 
-    const response = await jiraApi.post('/rest/api/3/search', {
-      jql,
-      startAt: parseInt(startAt),
-      maxResults: parseInt(maxResults),
-      fields: [
-        'summary',
-        'status',
-        'priority',
-        'assignee',
-        'created',
-        'updated',
-        'description',
-        'duedate',
-        'project'
-      ]
+    const response = await jiraApi.get('/rest/api/3/search/jql', {
+      params: {
+        jql,
+        startAt: parseInt(startAt),
+        maxResults: parseInt(maxResults),
+        fields: 'summary,status,priority,assignee,created,updated,description,duedate,project'
+      }
     });
 
-    res.json(response.data);
+    // Normalize response to match expected format
+    const result = {
+      issues: response.data.issues || [],
+      startAt: parseInt(startAt),
+      maxResults: parseInt(maxResults),
+      total: response.data.total ?? response.data.issues?.length ?? 0
+    };
+
+    res.json(result);
   } catch (error) {
     console.error('Error fetching issues:', error.message);
     next(error);
