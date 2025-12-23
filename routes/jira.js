@@ -62,21 +62,23 @@ router.post('/search', async (req, res, next) => {
   try {
     let { jql, startAt = 0, maxResults = 50, fields } = req.body;
 
-    // The new /search/jql API requires bounded queries
-    // If no restriction is present, add a default date restriction
-    const hasRestriction = jql && (
-      jql.toLowerCase().includes('project') ||
-      jql.toLowerCase().includes('created') ||
-      jql.toLowerCase().includes('updated') ||
-      jql.toLowerCase().includes('assignee') ||
-      jql.toLowerCase().includes('status') ||
-      jql.toLowerCase().includes('priority')
-    );
+    // The new /search/jql API requires bounded queries with project or date restriction
+    // Check if query already has a project restriction or created date filter
+    const lowerJql = (jql || '').toLowerCase();
+    const hasProjectRestriction = /project\s*(=|in)\s*/.test(lowerJql);
+    const hasCreatedRestriction = /created\s*(>=|<=|>|<|=)\s*/.test(lowerJql);
 
-    if (!hasRestriction) {
-      // Add a default restriction for the last 365 days
+    // Always add a date restriction if no project or created filter exists
+    if (!hasProjectRestriction && !hasCreatedRestriction) {
       const restriction = 'created >= -365d';
-      jql = jql ? `${restriction} AND ${jql}` : restriction;
+      // Handle case where jql is just "ORDER BY ..."
+      if (jql && jql.trim().toUpperCase().startsWith('ORDER BY')) {
+        jql = `${restriction} ${jql}`;
+      } else if (jql && jql.trim()) {
+        jql = `${restriction} AND ${jql}`;
+      } else {
+        jql = restriction;
+      }
     }
 
     console.log('Searching issues with JQL:', jql);
